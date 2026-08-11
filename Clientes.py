@@ -199,7 +199,11 @@ with st.expander("✏️ Editar o Eliminar Registros"):
                 opciones_registros.append(label)
                 indices_reales.append(idx + 2)
                 
-        seleccion = st.selectbox("Selecciona el registro a modificar", options=opciones_registros, index=0, key="select_edit")
+        # Inicializar clave de session_state si no existe
+        if "select_edit" not in st.session_state:
+            st.session_state.select_edit = "-- Selecciona un registro --"
+
+        seleccion = st.selectbox("Selecciona el registro a modificar", options=opciones_registros, key="select_edit")
         
         if seleccion == "-- Selecciona un registro --":
             st.info("👆 Por favor, selecciona una factura del menú desplegable para habilitar la edición.")
@@ -286,10 +290,12 @@ with st.expander("✏️ Editar o Eliminar Registros"):
                             
                         sheet.clear()
                         sheet.update("A1", sheet_data)
+                        st.session_state.select_edit = "-- Selecciona un registro --"
                         st.success("¡Registro actualizado correctamente!")
                         st.rerun()
                     
                 if eliminar:
                     sheet.delete_rows(idx_seleccionado)
+                    st.session_state.select_edit = "-- Selecciona un registro --"
                     st.success("¡Registro eliminado correctamente!")
                     st.rerun()
