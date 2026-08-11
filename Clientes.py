@@ -91,7 +91,7 @@ st.title("Inventario de Clientes y Proveedores")
 df = load_data()
 st.dataframe(df, use_container_width=True)
 
-# --- INICIALIZAR ESTADOS DE LIMPIEZA ---
+# --- INICIALIZAR ESTADOS DE LIMPIEZA PARA ALTA ---
 if "val_factura" not in st.session_state:
     st.session_state.val_factura = ""
 if "val_cliente" not in st.session_state:
@@ -170,7 +170,6 @@ with st.sidebar.form("alta_form"):
                 sheet.clear()
                 sheet.update("A1", sheet_data)
                 
-                # Restablecer los valores en session_state para vaciar el formulario
                 st.session_state.val_factura = ""
                 st.session_state.val_cliente = ""
                 st.session_state.val_descripcion = ""
@@ -190,8 +189,8 @@ with st.expander("✏️ Editar o Eliminar Registros"):
     if df.empty:
         st.info("No hay registros suficientes para editar.")
     else:
-        opciones_registros = []
-        indices_reales = []
+        opciones_registros = ["-- Selecciona un registro --"]
+        indices_reales = [None]
         
         for idx, row in df.iterrows():
             fact = str(row.get('FACTURA', '')).strip()
@@ -200,98 +199,97 @@ with st.expander("✏️ Editar o Eliminar Registros"):
                 opciones_registros.append(label)
                 indices_reales.append(idx + 2)
                 
-        if opciones_registros:
-            seleccion = st.selectbox("Selecciona el registro a modificar", options=opciones_registros, key="select_edit")
+        seleccion = st.selectbox("Selecciona el registro a modificar", options=opciones_registros, key="select_edit")
+        
+        if seleccion and seleccion != "-- Selecciona un registro --":
+            idx_seleccionado = indices_reales[opciones_registros.index(seleccion)]
+            fila_actual = sheet.row_values(idx_seleccionado)
             
-            if seleccion:
-                idx_seleccionado = indices_reales[opciones_registros.index(seleccion)]
-                fila_actual = sheet.row_values(idx_seleccionado)
+            while len(fila_actual) < 9:
+                fila_actual.append("")
+            
+            with st.form("edit_form"):
+                e_factura = st.text_input("Factura", value=fila_actual[0], key="e_fact")
+                e_cliente = st.text_input("Clientes", value=fila_actual[1], key="e_cli")
+                e_descripcion = st.text_input("Descripción", value=fila_actual[2], key="e_desc")
+                e_fecha = st.text_input("Fecha (YYYY-MM-DD)", value=fila_actual[3], key="e_fec")
                 
-                while len(fila_actual) < 9:
-                    fila_actual.append("")
+                try:
+                    sub_val = float(fila_actual[4])
+                except ValueError:
+                    sub_val = 0.0
+                    
+                e_subtotal = st.number_input("Subtotal", value=sub_val, format="%.2f", key="e_sub")
+                e_iva_input = st.text_input("IVA", value=fila_actual[5], key="e_iva")
+                e_isr_input = st.text_input("ISR", value=fila_actual[6], key="e_isr")
                 
-                with st.form("edit_form"):
-                    e_factura = st.text_input("Factura", value=fila_actual[0], key="e_fact")
-                    e_cliente = st.text_input("Clientes", value=fila_actual[1], key="e_cli")
-                    e_descripcion = st.text_input("Descripción", value=fila_actual[2], key="e_desc")
-                    e_fecha = st.text_input("Fecha (YYYY-MM-DD)", value=fila_actual[3], key="e_fec")
-                    
-                    try:
-                        sub_val = float(fila_actual[4])
-                    except ValueError:
-                        sub_val = 0.0
-                        
-                    e_subtotal = st.number_input("Subtotal", value=sub_val, format="%.2f", key="e_sub")
-                    e_iva_input = st.text_input("IVA", value=fila_actual[5], key="e_iva")
-                    e_isr_input = st.text_input("ISR", value=fila_actual[6], key="e_isr")
-                    
-                    idx_estatus = 0 if fila_actual[8] != "PAGADA" else 1
-                    e_estatus = st.selectbox("Estatus", options=["PENDIENTE", "PAGADA"], index=idx_estatus, key="e_est")
-                    
-                    col1, col2 = st.columns(2)
-                    actualizar = col1.form_submit_button("Actualizar Registro")
-                    eliminar = col2.form_submit_button("Eliminar Registro")
-                    
-                    if actualizar:
-                        facturas_existentes = []
-                        for i, r in df.iterrows():
-                            if (i + 2) != idx_seleccionado:
-                                f_val = str(r.get("FACTURA", "")).strip()
-                                if f_val and not f_val.startswith("---"):
-                                    facturas_existentes.append(f_val)
-                                    
-                        if e_factura.strip() in facturas_existentes:
-                            st.error(f"¡Error! El número de factura '{e_factura}' ya pertenece a otro registro.")
-                        else:
-                            try:
-                                e_iva = float(e_iva_input) if e_iva_input.strip() != "" else e_subtotal * 0.16
-                            except ValueError:
-                                e_iva = 0.0
-
-                            try:
-                                e_isr = float(e_isr_input) if e_isr_input.strip() != "" else e_subtotal * 0.0125
-                            except ValueError:
-                                e_isr = 0.0
-
-                            e_total = e_subtotal + e_iva + e_isr
-                            
-                            updated_row = {
-                                "FACTURA": e_factura.strip(),
-                                "CLIENTES": e_cliente.strip(),
-                                "DESCRIPCION": e_descripcion.strip(),
-                                "FECHA": e_fecha.strip(),
-                                "SUBTOTAL": f"{e_subtotal:.2f}",
-                                "IVA": f"{e_iva:.2f}",
-                                "ISR": f"{e_isr:.2f}",
-                                "TOTAL": f"{e_total:.2f}",
-                                "ESTATUS": e_estatus
-                            }
-                            
-                            current_records = []
-                            for i, r in df.iterrows():
-                                if (i + 2) == idx_seleccionado:
-                                    current_records.append(updated_row)
-                                else:
-                                    f_val = str(r.get("FACTURA", "")).strip()
-                                    if not f_val.startswith("---"):
-                                        current_records.append(r.to_dict())
-                                        
-                            temp_df = pd.DataFrame(current_records)
-                            reorganized = reorganizar_con_meses_en_sheet(temp_df)
-                            
-                            headers = list(df.columns)
-                            sheet_data = [headers]
-                            for r in reorganized:
-                                sheet_data.append([r.get(h, "") for h in headers])
+                idx_estatus = 0 if fila_actual[8] != "PAGADA" else 1
+                e_estatus = st.selectbox("Estatus", options=["PENDIENTE", "PAGADA"], index=idx_estatus, key="e_est")
+                
+                col1, col2 = st.columns(2)
+                actualizar = col1.form_submit_button("Actualizar Registro")
+                eliminar = col2.form_submit_button("Eliminar Registro")
+                
+                if actualizar:
+                    facturas_existentes = []
+                    for i, r in df.iterrows():
+                        if (i + 2) != idx_seleccionado:
+                            f_val = str(r.get("FACTURA", "")).strip()
+                            if f_val and not f_val.startswith("---"):
+                                facturas_existentes.append(f_val)
                                 
-                            sheet.clear()
-                            sheet.update("A1", sheet_data)
-                            st.success("¡Registro actualizado correctamente!")
-                            st.rerun()
+                    if e_factura.strip() in facturas_existentes:
+                        st.error(f"¡Error! El número de factura '{e_factura}' ya pertenece a otro registro.")
+                    else:
+                        try:
+                            e_iva = float(e_iva_input) if e_iva_input.strip() != "" else e_subtotal * 0.16
+                        except ValueError:
+                            e_iva = 0.0
+
+                        try:
+                            e_isr = float(e_isr_input) if e_isr_input.strip() != "" else e_subtotal * 0.0125
+                        except ValueError:
+                            e_isr = 0.0
+
+                        e_total = e_subtotal + e_iva + e_isr
                         
-                    if eliminar:
-                        sheet.delete_rows(idx_seleccionado)
-                        st.success("¡Registro eliminado correctamente!")
+                        updated_row = {
+                            "FACTURA": e_factura.strip(),
+                            "CLIENTES": e_cliente.strip(),
+                            "DESCRIPCION": e_descripcion.strip(),
+                            "FECHA": e_fecha.strip(),
+                            "SUBTOTAL": f"{e_subtotal:.2f}",
+                            "IVA": f"{e_iva:.2f}",
+                            "ISR": f"{e_isr:.2f}",
+                            "TOTAL": f"{e_total:.2f}",
+                            "ESTATUS": e_estatus
+                        }
+                        
+                        current_records = []
+                        for i, r in df.iterrows():
+                            if (i + 2) == idx_seleccionado:
+                                current_records.append(updated_row)
+                            else:
+                                f_val = str(r.get("FACTURA", "")).strip()
+                                if not f_val.startswith("---"):
+                                    current_records.append(r.to_dict())
+                                    
+                        temp_df = pd.DataFrame(current_records)
+                        reorganized = reorganizar_con_meses_en_sheet(temp_df)
+                        
+                        headers = list(df.columns)
+                        sheet_data = [headers]
+                        for r in reorganized:
+                            sheet_data.append([r.get(h, "") for h in headers])
+                            
+                        sheet.clear()
+                        sheet.update("A1", sheet_data)
+                        st.success("¡Registro actualizado correctamente!")
                         st.rerun()
+                    
+                if eliminar:
+                    sheet.delete_rows(idx_seleccionado)
+                    st.success("¡Registro eliminado correctamente!")
+                    st.rerun()
         else:
-            st.warning("No se encontraron registros válidos para modificar.")
+            st.info("Por favor, selecciona un registro válido en el menú desplegable para ver y modificar sus datos.")
